@@ -8,6 +8,9 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
         @keyframes slide-up {
             from {
@@ -28,6 +31,21 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // Firebase 설정
+        const firebaseConfig = {
+          apiKey: "AIzaSyDirTw6VCHrbTsx4qit7kBMqAO2E7K5Rls",
+          authDomain: "sodam-seoul.firebaseapp.com",
+          databaseURL: "https://sodam-seoul-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "sodam-seoul",
+          storageBucket: "sodam-seoul.firebasestorage.app",
+          messagingSenderId: "789780946324",
+          appId: "1:789780946324:web:e3f9e10ef6b6a1d36a4381"
+        };
+
+        // Firebase 초기화
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
         const SodamSeoulApp = () => {
           const [currentDate, setCurrentDate] = useState(new Date());
           const [mealTime, setMealTime] = useState('lunch'); // 'lunch' or 'dinner'
@@ -37,7 +55,8 @@
           const [editingReservation, setEditingReservation] = useState(null);
           const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
           const [currentWeek, setCurrentWeek] = useState(new Date());
-          const [isDataLoaded, setIsDataLoaded] = useState(false);
+          const [isOnline, setIsOnline] = useState(navigator.onLine);
+          const [syncStatus, setSyncStatus] = useState('동기화됨');
           
           // 예약 폼 데이터
           const [formData, setFormData] = useState({
@@ -48,7 +67,7 @@
             memo: ''
           });
 
-          // 테이블 정보 - 실제 개별 테이블로 수정
+          // 테이블 정보
           const tableLayout = {
             '1층': {
               room: ['1A']
@@ -70,34 +89,57 @@
             }
           };
 
-          // localStorage에서 데이터 로드
+          // 온라인/오프라인 상태 감지
           useEffect(() => {
-            const loadData = () => {
-              try {
-                const savedReservations = localStorage.getItem('sodamSeoulReservations');
-                if (savedReservations) {
-                  setReservations(JSON.parse(savedReservations));
-                }
-                setIsDataLoaded(true);
-              } catch (error) {
-                console.error('데이터 로드 실패:', error);
-                setIsDataLoaded(true);
-              }
+            const handleOnline = () => {
+              setIsOnline(true);
+              setSyncStatus('동기화됨');
             };
-            loadData();
+            const handleOffline = () => {
+              setIsOnline(false);
+              setSyncStatus('오프라인');
+            };
+
+            window.addEventListener('online', handleOnline);
+            window.addEventListener('offline', handleOffline);
+
+            return () => {
+              window.removeEventListener('online', handleOnline);
+              window.removeEventListener('offline', handleOffline);
+            };
           }, []);
 
-          // 예약 데이터가 변경될 때마다 localStorage에 저장
+          // Firebase에서 데이터 실시간 동기화
           useEffect(() => {
-            if (isDataLoaded && Object.keys(reservations).length >= 0) {
-              try {
-                localStorage.setItem('sodamSeoulReservations', JSON.stringify(reservations));
-              } catch (error) {
-                console.error('데이터 저장 실패:', error);
-                alert('저장 공간이 부족합니다. 오래된 예약을 삭제해주세요.');
+            const reservationsRef = database.ref('reservations');
+            
+            const handleData = (snapshot) => {
+              const data = snapshot.val() || {};
+              setReservations(data);
+              setSyncStatus('동기화됨');
+            };
+
+            const handleError = (error) => {
+              console.error('Firebase 동기화 오류:', error);
+              setSyncStatus('동기화 오류');
+              // 오프라인 시 localStorage 사용
+              const localData = localStorage.getItem('sodamSeoulReservations');
+              if (localData) {
+                setReservations(JSON.parse(localData));
               }
-            }
-          }, [reservations, isDataLoaded]);
+            };
+
+            reservationsRef.on('value', handleData, handleError);
+
+            return () => {
+              reservationsRef.off('value', handleData);
+            };
+          }, []);
+
+          // 로컬 백업 (오프라인 대비)
+          useEffect(() => {
+            localStorage.setItem('sodamSeoulReservations', JSON.stringify(reservations));
+          }, [reservations]);
 
           // 테이블별 수용 인원
           const getTableCapacity = (tableId) => {
@@ -108,14 +150,16 @@
           };
 
           // 시간대 옵션
-const isSaturday = currentDate.getDay() === 6;
-  const timeSlots = isSaturday 
-  ? (mealTime === 'lunch'
-    ? ['12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30', '14:40', '14:50', '15:00', '15:10', '15:20', '15:30', '15:40', '15:50', '16:00', '16:10', '16:20', '16:30', '16:40', '16:50']
-    : ['17:00', '17:10', '17:20', '17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00', '21:10', '21:20', '21:30', '21:40', '21:50'])
-  : (mealTime === 'lunch' 
-    ? ['11:30', '11:40', '11:50', '12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30']
-    : ['17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00']);
+          const isSaturday = currentDate.getDay() === 6;
+          
+          const timeSlots = isSaturday 
+            ? (mealTime === 'lunch'
+              ? ['12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30', '14:40', '14:50', '15:00', '15:10', '15:20', '15:30', '15:40', '15:50', '16:00', '16:10', '16:20', '16:30', '16:40', '16:50']
+              : ['17:00', '17:10', '17:20', '17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00', '21:10', '21:20', '21:30', '21:40', '21:50'])
+            : (mealTime === 'lunch' 
+              ? ['11:30', '11:40', '11:50', '12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30']
+              : ['17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00']);
+
           // 날짜 포맷
           const formatDate = (date) => {
             return `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}.`;
@@ -143,7 +187,6 @@ const isSaturday = currentDate.getDay() === 6;
             newWeek.setDate(newWeek.getDate() + (weeks * 7));
             setCurrentWeek(newWeek);
             
-            // 현재 선택된 날짜가 새로운 주에 포함되지 않으면 주의 첫 날로 변경
             const weekDates = getWeekDates(newWeek);
             const isCurrentDateInNewWeek = weekDates.some(date => 
               date.toDateString() === currentDate.toDateString()
@@ -164,14 +207,7 @@ const isSaturday = currentDate.getDay() === 6;
             return !!reservations[key];
           };
 
-          // 테이블의 예약 시간 가져오기
-          const getReservationTime = (table) => {
-            const key = getReservationKey(currentDate, table, mealTime);
-            const reservation = reservations[key];
-            return reservation ? reservation.time : null;
-          };
-
-          // 테이블의 예약 정보 가져오기 (시간과 인원)
+          // 테이블의 예약 정보 가져오기
           const getReservationInfo = (table) => {
             const key = getReservationKey(currentDate, table, mealTime);
             const reservation = reservations[key];
@@ -179,47 +215,72 @@ const isSaturday = currentDate.getDay() === 6;
           };
 
           // 예약 추가/수정
-          const handleReservationSubmit = () => {
+          const handleReservationSubmit = async () => {
             if (!formData.name || !formData.phone || !formData.people || !formData.time) {
               alert('필수 정보를 모두 입력해주세요.');
               return;
             }
 
             const key = getReservationKey(currentDate, selectedTable, mealTime);
-            const newReservations = { ...reservations };
-            newReservations[key] = {
+            const reservationData = {
               ...formData,
               table: selectedTable,
               date: currentDate.toDateString(),
               mealTime: mealTime,
-              noShow: false
+              noShow: false,
+              createdAt: new Date().toISOString(),
+              updatedBy: 'user' // 나중에 사용자 구분 가능
             };
-            
-            setReservations(newReservations);
-            setShowReservationForm(false);
-            setFormData({ name: '', phone: '', people: '', time: '', memo: '' });
-            setEditingReservation(null);
+
+            try {
+              setSyncStatus('저장 중...');
+              // Firebase에 저장
+              await database.ref(`reservations/${key}`).set(reservationData);
+              
+              setShowReservationForm(false);
+              setFormData({ name: '', phone: '', people: '', time: '', memo: '' });
+              setEditingReservation(null);
+              setSyncStatus('동기화됨');
+            } catch (error) {
+              console.error('예약 저장 실패:', error);
+              alert('예약 저장에 실패했습니다. 다시 시도해주세요.');
+              setSyncStatus('동기화 오류');
+            }
           };
 
           // 예약 삭제
-          const handleDeleteReservation = (table) => {
+          const handleDeleteReservation = async (table) => {
             if (window.confirm('예약을 삭제하시겠습니까?')) {
               const key = getReservationKey(currentDate, table, mealTime);
-              const newReservations = { ...reservations };
-              delete newReservations[key];
-              setReservations(newReservations);
-              setSelectedTable(null);
-              setShowReservationForm(false);
+              
+              try {
+                setSyncStatus('삭제 중...');
+                await database.ref(`reservations/${key}`).remove();
+                setSelectedTable(null);
+                setShowReservationForm(false);
+                setSyncStatus('동기화됨');
+              } catch (error) {
+                console.error('예약 삭제 실패:', error);
+                alert('예약 삭제에 실패했습니다. 다시 시도해주세요.');
+                setSyncStatus('동기화 오류');
+              }
             }
           };
 
           // 노쇼 체크
-          const handleNoShowToggle = (table) => {
+          const handleNoShowToggle = async (table) => {
             const key = getReservationKey(currentDate, table, mealTime);
-            const newReservations = { ...reservations };
-            if (newReservations[key]) {
-              newReservations[key].noShow = !newReservations[key].noShow;
-              setReservations(newReservations);
+            const reservation = reservations[key];
+            
+            if (reservation) {
+              try {
+                setSyncStatus('업데이트 중...');
+                await database.ref(`reservations/${key}/noShow`).set(!reservation.noShow);
+                setSyncStatus('동기화됨');
+              } catch (error) {
+                console.error('노쇼 상태 변경 실패:', error);
+                setSyncStatus('동기화 오류');
+              }
             }
           };
 
@@ -237,13 +298,6 @@ const isSaturday = currentDate.getDay() === 6;
               setFormData({ name: '', phone: '', people: '', time: '', memo: '' });
             }
             setShowReservationForm(true);
-          };
-
-          // 날짜 변경
-          const changeDate = (days) => {
-            const newDate = new Date(currentDate);
-            newDate.setDate(newDate.getDate() + days);
-            setCurrentDate(newDate);
           };
 
           // 요일 이름 가져오기
@@ -514,23 +568,36 @@ const isSaturday = currentDate.getDay() === 6;
             linkElement.click();
           };
 
-          // 오래된 예약 정리 (3개월 이상)
-          const cleanOldReservations = () => {
+          // 오래된 예약 정리
+          const cleanOldReservations = async () => {
             if (!window.confirm('3개월 이상 지난 예약을 모두 삭제하시겠습니까?')) return;
             
             const threeMonthsAgo = new Date();
             threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
             
-            const newReservations = {};
-            Object.entries(reservations).forEach(([key, res]) => {
-              const resDate = new Date(res.date);
-              if (resDate > threeMonthsAgo) {
-                newReservations[key] = res;
+            try {
+              setSyncStatus('정리 중...');
+              const updates = {};
+              
+              Object.entries(reservations).forEach(([key, res]) => {
+                const resDate = new Date(res.date);
+                if (resDate <= threeMonthsAgo) {
+                  updates[`reservations/${key}`] = null;
+                }
+              });
+              
+              if (Object.keys(updates).length > 0) {
+                await database.ref().update(updates);
+                alert(`${Object.keys(updates).length}개의 오래된 예약이 정리되었습니다.`);
+              } else {
+                alert('정리할 예약이 없습니다.');
               }
-            });
-            
-            setReservations(newReservations);
-            alert('오래된 예약이 정리되었습니다.');
+              setSyncStatus('동기화됨');
+            } catch (error) {
+              console.error('예약 정리 실패:', error);
+              alert('예약 정리에 실패했습니다.');
+              setSyncStatus('동기화 오류');
+            }
           };
 
           return (
@@ -540,7 +607,12 @@ const isSaturday = currentDate.getDay() === 6;
                 <div className="bg-white shadow-md p-4">
                   <div className="flex justify-between items-center">
                     <h1 className="text-xl font-bold text-gray-800">소담서울 예약 관리</h1>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {syncStatus}
+                      </span>
                       <button
                         onClick={backupData}
                         className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600"
