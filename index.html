@@ -487,28 +487,39 @@
 
             // 리스트 뷰 렌더링
             const renderListView = () => {
-                // 현재 날짜와 식사 시간에 해당하는 예약 필터링
-                const filteredEntries = Object.entries(reservations).filter(([key, res]) => 
-                    res.date === currentDate.toDateString() && res.mealTime === mealTime
-                );
+                // 현재 날짜와 식사 시간에 해당하는 예약만 필터링
+                const tempArray = [];
                 
-                // 예약 객체만 추출하고 정렬
-                const currentReservations = filteredEntries
-                    .map(([key, res]) => res)
-                    .sort((a, b) => {
-                        // 둘 다 시간이 있을 때만 비교
-                        if (a.time && b.time) {
-                            // 시간 문자열을 직접 비교 ("11:30" < "12:00" < "17:30" 등)
-                            // padStart를 사용해 한 자리 시간도 정확히 비교
-                            const timeA = a.time.split(':').map(t => t.padStart(2, '0')).join(':');
-                            const timeB = b.time.split(':').map(t => t.padStart(2, '0')).join(':');
-                            return timeA.localeCompare(timeB);
-                        }
-                        // 시간이 없는 예약은 뒤로
-                        if (!a.time) return 1;
-                        if (!b.time) return -1;
-                        return 0;
-                    });
+                Object.entries(reservations).forEach(([key, reservation]) => {
+                    if (reservation.date === currentDate.toDateString() && 
+                        reservation.mealTime === mealTime) {
+                        tempArray.push(reservation);
+                    }
+                });
+                
+                // 시간순 정렬 - 새 배열 생성
+                tempArray.sort((a, b) => {
+                    if (!a.time) return 1;
+                    if (!b.time) return -1;
+                    
+                    // "11:30" vs "12:00" 형태로 비교
+                    const timeA = a.time.split(':');
+                    const timeB = b.time.split(':');
+                    
+                    const hourA = parseInt(timeA[0]);
+                    const hourB = parseInt(timeB[0]);
+                    
+                    if (hourA !== hourB) {
+                        return hourA - hourB;
+                    }
+                    
+                    const minA = parseInt(timeA[1]);
+                    const minB = parseInt(timeB[1]);
+                    
+                    return minA - minB;
+                });
+                
+                const currentReservations = tempArray;
                 
                 return (
                     <div className="bg-white rounded-lg shadow p-4">
