@@ -487,25 +487,42 @@
 
             // 리스트 뷰 렌더링
             const renderListView = () => {
-                // 현재 날짜와 식사 시간에 해당하는 예약 필터링 후 배열로 변환
-                const reservationArray = Object.entries(reservations)
-                    .filter(([key, res]) => 
-                        res.date === currentDate.toDateString() && res.mealTime === mealTime
-                    )
-                    .map(([key, res]) => res);
+                // 디버깅을 위한 로그
+                console.log('renderListView 호출됨');
+                console.log('전체 예약 데이터:', reservations);
+                console.log('현재 날짜:', currentDate.toDateString());
+                console.log('식사 시간:', mealTime);
                 
-                // 시간순으로 정렬 (새로운 배열 생성)
+                // 현재 날짜와 식사 시간에 해당하는 예약 필터링
+                const reservationArray = [];
+                
+                Object.entries(reservations).forEach(([key, res]) => {
+                    if (res.date === currentDate.toDateString() && res.mealTime === mealTime) {
+                        reservationArray.push(res);
+                    }
+                });
+                
+                console.log('필터링된 예약:', reservationArray);
+                
+                // 시간순으로 정렬
                 const currentReservations = reservationArray.sort((a, b) => {
                     // 시간이 없으면 뒤로
-                    if (!a.time) return 1;
-                    if (!b.time) return -1;
+                    if (!a.time || a.time === '') return 1;
+                    if (!b.time || b.time === '') return -1;
                     
-                    // "19:00" -> 1900으로 변환하여 비교
-                    const aTime = parseInt(a.time.replace(':', ''), 10);
-                    const bTime = parseInt(b.time.replace(':', ''), 10);
+                    // 시간 비교를 위해 시와 분을 분리
+                    const [aHour, aMin] = a.time.split(':').map(n => parseInt(n, 10));
+                    const [bHour, bMin] = b.time.split(':').map(n => parseInt(n, 10));
                     
-                    return aTime - bTime;
+                    // 시간 비교
+                    if (aHour !== bHour) {
+                        return aHour - bHour;
+                    }
+                    // 시간이 같으면 분 비교
+                    return aMin - bMin;
                 });
+                
+                console.log('정렬된 예약:', currentReservations);
                 
                 return (
                     <div className="bg-white rounded-lg shadow p-4">
