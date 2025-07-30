@@ -491,15 +491,37 @@
                     .filter(([key, res]) => 
                         res.date === currentDate.toDateString() && res.mealTime === mealTime
                     )
-                    .map(([key, res]) => res)
-                    .sort((a, b) => {
-                        // time이 없으면 맨 뒤로
-                        if (!a.time) return 1;
-                        if (!b.time) return -1;
-                        
-                        // 시간 문자열 직접 비교 (11:30 < 12:00 < 12:30...)
-                        return a.time.localeCompare(b.time);
+                    .map(([key, res]) => res);
+                
+                // 먼저 정렬 전 데이터 확인
+                if (currentReservations.length > 0) {
+                    console.log('=== 정렬 전 예약 목록 ===');
+                    currentReservations.forEach(res => {
+                        console.log(`${res.table}: ${res.time} (${res.name})`);
                     });
+                }
+                
+                // 정렬
+                currentReservations.sort((a, b) => {
+                    // time이 없으면 맨 뒤로
+                    if (!a.time) return 1;
+                    if (!b.time) return -1;
+                    
+                    // 두 가지 방법으로 시도
+                    // 방법 1: 숫자로 변환
+                    const timeA = parseInt(a.time.replace(':', ''), 10);
+                    const timeB = parseInt(b.time.replace(':', ''), 10);
+                    
+                    return timeA - timeB;
+                });
+                
+                // 정렬 후 확인
+                if (currentReservations.length > 0) {
+                    console.log('=== 정렬 후 예약 목록 ===');
+                    currentReservations.forEach(res => {
+                        console.log(`${res.table}: ${res.time} (${res.name})`);
+                    });
+                }
                 
                 return (
                     <div className="bg-white rounded-lg shadow p-4">
