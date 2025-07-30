@@ -487,41 +487,26 @@
 
             // 리스트 뷰 렌더링
             const renderListView = () => {
-                const currentReservations = Object.entries(reservations)
+                // 현재 날짜와 식사 시간에 해당하는 예약 필터링
+                const filteredReservations = Object.entries(reservations)
                     .filter(([key, res]) => 
                         res.date === currentDate.toDateString() && res.mealTime === mealTime
                     )
                     .map(([key, res]) => res);
                 
-                // 먼저 정렬 전 데이터 확인
-                if (currentReservations.length > 0) {
-                    console.log('=== 정렬 전 예약 목록 ===');
-                    currentReservations.forEach(res => {
-                        console.log(`${res.table}: ${res.time} (${res.name})`);
-                    });
-                }
-                
-                // 정렬
-                currentReservations.sort((a, b) => {
-                    // time이 없으면 맨 뒤로
-                    if (!a.time) return 1;
-                    if (!b.time) return -1;
+                // 시간순 정렬
+                const sortedReservations = [...filteredReservations].sort((a, b) => {
+                    if (!a.time || !b.time) return 0;
                     
-                    // 두 가지 방법으로 시도
-                    // 방법 1: 숫자로 변환
-                    const timeA = parseInt(a.time.replace(':', ''), 10);
-                    const timeB = parseInt(b.time.replace(':', ''), 10);
+                    // "12:30" -> 1230 형태로 변환하여 숫자 비교
+                    const timeA = parseInt(a.time.replace(':', ''));
+                    const timeB = parseInt(b.time.replace(':', ''));
                     
                     return timeA - timeB;
                 });
                 
-                // 정렬 후 확인
-                if (currentReservations.length > 0) {
-                    console.log('=== 정렬 후 예약 목록 ===');
-                    currentReservations.forEach(res => {
-                        console.log(`${res.table}: ${res.time} (${res.name})`);
-                    });
-                }
+                // 정렬된 데이터 사용
+                const currentReservations = sortedReservations;
                 
                 return (
                     <div className="bg-white rounded-lg shadow p-4">
