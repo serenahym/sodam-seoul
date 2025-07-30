@@ -3,51 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>소담서울 예약 관리</title>
-    <!-- PWA 설정 -->
-    <link rel="manifest" href="/manifest.json">
+    <title>소담서울 예약 관리 v2</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="theme-color" content="#3B82F6">
+    
+    <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK -->
+    
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
     <style>
-        @keyframes slide-up {
+        /* 커스텀 스타일 */
+        body {
+            overscroll-behavior: contain;
+        }
+        
+        /* 모바일 탭 하이라이트 제거 */
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* 슬라이드 애니메이션 */
+        @keyframes slideUp {
             from {
                 transform: translateY(100%);
+                opacity: 0;
             }
             to {
                 transform: translateY(0);
+                opacity: 1;
             }
         }
-        .animate-slide-up {
-            animation: slide-up 0.3s ease-out;
+        
+        .slide-up {
+            animation: slideUp 0.3s ease-out;
         }
     </style>
 </head>
-<body>
+<body class="bg-gray-50">
     <div id="root"></div>
     
-    <script>
-        // Service Worker 등록 - 실제 서버에서만 동작
-        if ('serviceWorker' in navigator && window.location.hostname !== 'www.claudeusercontent.com') {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('Service Worker 등록됨'))
-                    .catch(err => console.log('Service Worker 등록 실패:', err));
-            });
-        }
-    </script>
-    
     <script type="text/babel">
-        const { useState, useEffect } = React;
-
+        const { useState, useEffect, useMemo } = React;
+        
         // Firebase 설정
         const firebaseConfig = {
             apiKey: "AIzaSyDirTw6VCHrbTsx4qit7kBMqAO2E7K5Rls",
@@ -58,833 +64,702 @@
             messagingSenderId: "789780946324",
             appId: "1:789780946324:web:e3f9e10ef6b6a1d36a4381"
         };
-
+        
         // Firebase 초기화
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
-
-        const SodamSeoulApp = () => {
+        
+        // 메인 앱 컴포넌트
+        function App() {
+            // 상태 관리
             const [currentDate, setCurrentDate] = useState(new Date());
-            const [mealTime, setMealTime] = useState('lunch'); // 'lunch' or 'dinner'
+            const [mealTime, setMealTime] = useState('lunch');
+            const [viewMode, setViewMode] = useState('list'); // 기본값을 list로 변경
             const [reservations, setReservations] = useState({});
-            const [selectedTable, setSelectedTable] = useState(null);
-            const [showReservationForm, setShowReservationForm] = useState(false);
-            const [editingReservation, setEditingReservation] = useState(null);
-            const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
-            const [currentWeek, setCurrentWeek] = useState(new Date());
+            const [selectedReservation, setSelectedReservation] = useState(null);
+            const [showForm, setShowForm] = useState(false);
             const [isOnline, setIsOnline] = useState(navigator.onLine);
-            const [syncStatus, setSyncStatus] = useState('동기화됨');
             
-            // 예약 폼 데이터
+            // 폼 데이터
             const [formData, setFormData] = useState({
+                table: '',
                 name: '',
                 phone: '',
                 people: '',
                 time: '',
                 memo: ''
             });
-
+            
             // 테이블 정보
-            const tableLayout = {
-                '1층': {
-                    room: ['1A']
+            const tables = {
+                room: ['1A', '4A', '4B'],
+                floor2: {
+                    A: ['2A1', '2A2', '2A3'],
+                    B: ['2B1', '2B2', '2B3', '2B4']
                 },
-                '2층': {
-                    hall: {
-                        '2A': ['2A1', '2A2', '2A3'], // 각 4인석
-                        '2B': ['2B1', '2B2', '2B3', '2B4'] // 각 6인석
-                    }
-                },
-                '3층': {
-                    hall: {
-                        '3A': ['3A1', '3A2', '3A3'], // 각 4인석
-                        '3B': ['3B1', '3B2', '3B3', '3B4'] // 각 6인석
-                    }
-                },
-                '4층': {
-                    room: ['4A', '4B']
+                floor3: {
+                    A: ['3A1', '3A2', '3A3'],
+                    B: ['3B1', '3B2', '3B3', '3B4']
                 }
             };
-
-            // 온라인/오프라인 상태 감지
-            useEffect(() => {
-                const handleOnline = () => {
-                    setIsOnline(true);
-                    setSyncStatus('동기화됨');
-                };
-                const handleOffline = () => {
-                    setIsOnline(false);
-                    setSyncStatus('오프라인');
-                };
-
-                window.addEventListener('online', handleOnline);
-                window.addEventListener('offline', handleOffline);
-
-                return () => {
-                    window.removeEventListener('online', handleOnline);
-                    window.removeEventListener('offline', handleOffline);
-                };
-            }, []);
-
-            // Firebase에서 데이터 실시간 동기화
+            
+            // 테이블 수용 인원
+            const getTableCapacity = (tableId) => {
+                if (['1A', '4A', '4B'].includes(tableId)) return 10;
+                if (tableId.includes('A')) return 4;
+                if (tableId.includes('B')) return 6;
+                return 4;
+            };
+            
+            // 시간 옵션 생성
+            const getTimeSlots = () => {
+                const isSaturday = currentDate.getDay() === 6;
+                
+                if (isSaturday) {
+                    if (mealTime === 'lunch') {
+                        return generateTimeSlots('12:00', '16:50', 10);
+                    } else {
+                        return generateTimeSlots('17:00', '21:50', 10);
+                    }
+                } else {
+                    if (mealTime === 'lunch') {
+                        return generateTimeSlots('11:30', '14:30', 10);
+                    } else {
+                        return generateTimeSlots('17:30', '21:00', 10);
+                    }
+                }
+            };
+            
+            // 시간 슬롯 생성 헬퍼 함수
+            const generateTimeSlots = (start, end, interval) => {
+                const slots = [];
+                const [startHour, startMin] = start.split(':').map(Number);
+                const [endHour, endMin] = end.split(':').map(Number);
+                
+                let currentHour = startHour;
+                let currentMin = startMin;
+                
+                while (currentHour < endHour || (currentHour === endHour && currentMin <= endMin)) {
+                    slots.push(`${currentHour.toString().padStart(2, '0')}:${currentMin.toString().padStart(2, '0')}`);
+                    
+                    currentMin += interval;
+                    if (currentMin >= 60) {
+                        currentHour += Math.floor(currentMin / 60);
+                        currentMin = currentMin % 60;
+                    }
+                }
+                
+                return slots;
+            };
+            
+            // Firebase 실시간 동기화
             useEffect(() => {
                 const reservationsRef = database.ref('reservations');
                 
                 const handleData = (snapshot) => {
                     const data = snapshot.val() || {};
                     setReservations(data);
-                    setSyncStatus('동기화됨');
                 };
-
-                const handleError = (error) => {
-                    console.error('Firebase 동기화 오류:', error);
-                    setSyncStatus('동기화 오류');
-                    // 오프라인 시 localStorage 사용
-                    const localData = localStorage.getItem('sodamSeoulReservations');
-                    if (localData) {
-                        setReservations(JSON.parse(localData));
-                    }
-                };
-
-                reservationsRef.on('value', handleData, handleError);
-
+                
+                reservationsRef.on('value', handleData);
+                
                 return () => {
                     reservationsRef.off('value', handleData);
                 };
             }, []);
-
-            // 로컬 백업 (오프라인 대비)
-            useEffect(() => {
-                localStorage.setItem('sodamSeoulReservations', JSON.stringify(reservations));
-            }, [reservations]);
-
-            // 테이블별 수용 인원
-            const getTableCapacity = (tableId) => {
-                if (tableId.includes('1A') || tableId.includes('4A') || tableId.includes('4B')) return 10;
-                if (tableId.includes('A')) return 4;
-                if (tableId.includes('B')) return 6;
-                return 4;
-            };
-
-            // 시간대 옵션
-            const isSaturday = currentDate.getDay() === 6;
             
-            const timeSlots = isSaturday 
-                ? (mealTime === 'lunch'
-                    ? ['12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30', '14:40', '14:50', '15:00', '15:10', '15:20', '15:30', '15:40', '15:50', '16:00', '16:10', '16:20', '16:30', '16:40', '16:50']
-                    : ['17:00', '17:10', '17:20', '17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00', '21:10', '21:20', '21:30', '21:40', '21:50'])
-                : (mealTime === 'lunch' 
-                    ? ['11:30', '11:40', '11:50', '12:00', '12:10', '12:20', '12:30', '12:40', '12:50', '13:00', '13:10', '13:20', '13:30', '13:40', '13:50', '14:00', '14:10', '14:20', '14:30']
-                    : ['17:30', '17:40', '17:50', '18:00', '18:10', '18:20', '18:30', '18:40', '18:50', '19:00', '19:10', '19:20', '19:30', '19:40', '19:50', '20:00', '20:10', '20:20', '20:30', '20:40', '20:50', '21:00']);
-
-            // 날짜 포맷
-            const formatDate = (date) => {
-                return `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}.`;
-            };
-
-            // 주간 날짜 가져오기
-            const getWeekDates = (date) => {
-                const week = [];
-                const startOfWeek = new Date(date);
-                const day = startOfWeek.getDay();
-                const diff = startOfWeek.getDate() - day;
-                startOfWeek.setDate(diff);
+            // 온라인/오프라인 상태 감지
+            useEffect(() => {
+                const handleOnline = () => setIsOnline(true);
+                const handleOffline = () => setIsOnline(false);
                 
-                for (let i = 0; i < 7; i++) {
-                    const day = new Date(startOfWeek);
-                    day.setDate(startOfWeek.getDate() + i);
-                    week.push(day);
-                }
-                return week;
-            };
-
-            // 주 변경
-            const changeWeek = (weeks) => {
-                const newWeek = new Date(currentWeek);
-                newWeek.setDate(newWeek.getDate() + (weeks * 7));
-                setCurrentWeek(newWeek);
+                window.addEventListener('online', handleOnline);
+                window.addEventListener('offline', handleOffline);
                 
-                const weekDates = getWeekDates(newWeek);
-                const isCurrentDateInNewWeek = weekDates.some(date => 
-                    date.toDateString() === currentDate.toDateString()
-                );
-                if (!isCurrentDateInNewWeek) {
-                    setCurrentDate(weekDates[0]);
-                }
-            };
-
+                return () => {
+                    window.removeEventListener('online', handleOnline);
+                    window.removeEventListener('offline', handleOffline);
+                };
+            }, []);
+            
             // 예약 키 생성
             const getReservationKey = (date, table, mealTime) => {
                 return `${date.toDateString()}-${table}-${mealTime}`;
             };
-
-            // 예약 확인
-            const isTableReserved = (table) => {
-                const key = getReservationKey(currentDate, table, mealTime);
-                return !!reservations[key];
-            };
-
-            // 테이블의 예약 정보 가져오기
-            const getReservationInfo = (table) => {
-                const key = getReservationKey(currentDate, table, mealTime);
-                const reservation = reservations[key];
-                return reservation ? `${reservation.time} (${reservation.people}명)` : null;
-            };
-
+            
+            // 현재 날짜의 예약 목록 (시간순 정렬)
+            const currentReservations = useMemo(() => {
+                const filtered = Object.entries(reservations)
+                    .filter(([key, res]) => 
+                        res.date === currentDate.toDateString() && 
+                        res.mealTime === mealTime
+                    )
+                    .map(([key, res]) => ({ ...res, key }));
+                
+                // 시간순 정렬
+                return filtered.sort((a, b) => {
+                    if (!a.time || !b.time) return 0;
+                    
+                    // 시간을 분으로 변환하여 비교
+                    const timeToMinutes = (time) => {
+                        const [h, m] = time.split(':').map(Number);
+                        return h * 60 + m;
+                    };
+                    
+                    return timeToMinutes(a.time) - timeToMinutes(b.time);
+                });
+            }, [reservations, currentDate, mealTime]);
+            
             // 예약 추가/수정
-            const handleReservationSubmit = async () => {
-                if (!formData.name || !formData.phone || !formData.people || !formData.time) {
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!formData.table || !formData.name || !formData.phone || !formData.people || !formData.time) {
                     alert('필수 정보를 모두 입력해주세요.');
                     return;
                 }
-
-                const key = getReservationKey(currentDate, selectedTable, mealTime);
+                
+                const key = getReservationKey(currentDate, formData.table, mealTime);
                 const reservationData = {
                     ...formData,
-                    table: selectedTable,
                     date: currentDate.toDateString(),
                     mealTime: mealTime,
-                    noShow: false,
-                    createdAt: new Date().toISOString(),
-                    updatedBy: 'user' // 나중에 사용자 구분 가능
+                    noShow: selectedReservation?.noShow || false,
+                    createdAt: selectedReservation?.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 };
-
+                
                 try {
-                    setSyncStatus('저장 중...');
-                    // Firebase에 저장
                     await database.ref(`reservations/${key}`).set(reservationData);
-                    
-                    setShowReservationForm(false);
-                    setFormData({ name: '', phone: '', people: '', time: '', memo: '' });
-                    setEditingReservation(null);
-                    setSyncStatus('동기화됨');
+                    setShowForm(false);
+                    setSelectedReservation(null);
+                    setFormData({
+                        table: '',
+                        name: '',
+                        phone: '',
+                        people: '',
+                        time: '',
+                        memo: ''
+                    });
+                    alert(selectedReservation ? '예약이 수정되었습니다.' : '예약이 등록되었습니다.');
                 } catch (error) {
                     console.error('예약 저장 실패:', error);
-                    alert('예약 저장에 실패했습니다. 다시 시도해주세요.');
-                    setSyncStatus('동기화 오류');
+                    alert('예약 저장에 실패했습니다.');
                 }
             };
-
+            
             // 예약 삭제
-            const handleDeleteReservation = async (table) => {
-                if (window.confirm('예약을 삭제하시겠습니까?')) {
-                    const key = getReservationKey(currentDate, table, mealTime);
-                    
-                    try {
-                        setSyncStatus('삭제 중...');
-                        await database.ref(`reservations/${key}`).remove();
-                        setSelectedTable(null);
-                        setShowReservationForm(false);
-                        setSyncStatus('동기화됨');
-                    } catch (error) {
-                        console.error('예약 삭제 실패:', error);
-                        alert('예약 삭제에 실패했습니다. 다시 시도해주세요.');
-                        setSyncStatus('동기화 오류');
-                    }
-                }
-            };
-
-            // 노쇼 체크
-            const handleNoShowToggle = async (table) => {
-                const key = getReservationKey(currentDate, table, mealTime);
-                const reservation = reservations[key];
+            const handleDelete = async (reservation) => {
+                if (!confirm('예약을 삭제하시겠습니까?')) return;
                 
-                if (reservation) {
-                    try {
-                        setSyncStatus('업데이트 중...');
-                        await database.ref(`reservations/${key}/noShow`).set(!reservation.noShow);
-                        setSyncStatus('동기화됨');
-                    } catch (error) {
-                        console.error('노쇼 상태 변경 실패:', error);
-                        setSyncStatus('동기화 오류');
-                    }
-                }
-            };
-
-            // 테이블 클릭 핸들러
-            const handleTableClick = (tableId) => {
-                setSelectedTable(tableId);
-                const key = getReservationKey(currentDate, tableId, mealTime);
-                const existingReservation = reservations[key];
-                
-                if (existingReservation) {
-                    setEditingReservation(existingReservation);
-                    setFormData(existingReservation);
-                } else {
-                    setEditingReservation(null);
-                    setFormData({ name: '', phone: '', people: '', time: '', memo: '' });
-                }
-                setShowReservationForm(true);
-            };
-
-            // 요일 이름 가져오기
-            const getDayName = (date) => {
-                const days = ['일', '월', '화', '수', '목', '금', '토'];
-                return days[date.getDay()];
-            };
-
-            // 오늘인지 확인
-            const isToday = (date) => {
-                const today = new Date();
-                return date.toDateString() === today.toDateString();
-            };
-
-            // 그리드 뷰 렌더링
-            const renderGridView = () => {
-                return (
-                    <div className="bg-white rounded-lg shadow p-4">
-                        <div className="space-y-4">
-                            {/* Room - 맨 위에 한 줄로 */}
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Room</h4>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div 
-                                        onClick={() => handleTableClick('1A')}
-                                        className={`h-14 rounded-lg flex items-center justify-center cursor-pointer transition-all text-sm
-                                            ${isTableReserved('1A') ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                    >
-                                        <div className="text-center">
-                                            <div className="font-semibold">1A</div>
-                                            <div className="text-xs">
-                                                {getReservationInfo('1A') || '(~10명)'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div 
-                                        onClick={() => handleTableClick('4A')}
-                                        className={`h-14 rounded-lg flex items-center justify-center cursor-pointer transition-all text-sm
-                                            ${isTableReserved('4A') ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                    >
-                                        <div className="text-center">
-                                            <div className="font-semibold">4A</div>
-                                            <div className="text-xs">
-                                                {getReservationInfo('4A') || '(~10명)'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div 
-                                        onClick={() => handleTableClick('4B')}
-                                        className={`h-14 rounded-lg flex items-center justify-center cursor-pointer transition-all text-sm
-                                            ${isTableReserved('4B') ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                    >
-                                        <div className="text-center">
-                                            <div className="font-semibold">4B</div>
-                                            <div className="text-xs">
-                                                {getReservationInfo('4B') || '(~10명)'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 2층 Hall */}
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">2층</h4>
-                                <div className="space-y-2">
-                                    {/* 2B 구역 */}
-                                    <div>
-                                        <div className="text-xs text-gray-600 mb-1">2B (6인석)</div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {tableLayout['2층'].hall['2B'].map(table => (
-                                                <div 
-                                                    key={table}
-                                                    onClick={() => handleTableClick(table)}
-                                                    className={`h-12 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all text-xs
-                                                        ${isTableReserved(table) ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                                >
-                                                    <div>{table}</div>
-                                                    {getReservationInfo(table) && (
-                                                        <div className="text-[10px]">{getReservationInfo(table)}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {/* 2A 구역 */}
-                                    <div>
-                                        <div className="text-xs text-gray-600 mb-1">2A (4인석)</div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {tableLayout['2층'].hall['2A'].map(table => (
-                                                <div 
-                                                    key={table}
-                                                    onClick={() => handleTableClick(table)}
-                                                    className={`h-12 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all text-xs
-                                                        ${isTableReserved(table) ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                                >
-                                                    <div>{table}</div>
-                                                    {getReservationInfo(table) && (
-                                                        <div className="text-[10px]">{getReservationInfo(table)}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            <div className="h-12"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 3층 Hall */}
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">3층</h4>
-                                <div className="space-y-2">
-                                    {/* 3B 구역 */}
-                                    <div>
-                                        <div className="text-xs text-gray-600 mb-1">3B (6인석)</div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {tableLayout['3층'].hall['3B'].map(table => (
-                                                <div 
-                                                    key={table}
-                                                    onClick={() => handleTableClick(table)}
-                                                    className={`h-12 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all text-xs
-                                                        ${isTableReserved(table) ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                                >
-                                                    <div>{table}</div>
-                                                    {getReservationInfo(table) && (
-                                                        <div className="text-[10px]">{getReservationInfo(table)}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {/* 3A 구역 */}
-                                    <div>
-                                        <div className="text-xs text-gray-600 mb-1">3A (4인석)</div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {tableLayout['3층'].hall['3A'].map(table => (
-                                                <div 
-                                                    key={table}
-                                                    onClick={() => handleTableClick(table)}
-                                                    className={`h-12 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all text-xs
-                                                        ${isTableReserved(table) ? 'bg-red-500 text-white' : 'bg-green-100 hover:bg-green-200'}`}
-                                                >
-                                                    <div>{table}</div>
-                                                    {getReservationInfo(table) && (
-                                                        <div className="text-[10px]">{getReservationInfo(table)}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            <div className="h-12"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 범례 */}
-                        <div className="flex gap-4 mt-4 justify-center">
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-3 bg-green-100 rounded"></div>
-                                <span className="text-xs text-gray-600">예약 가능</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-3 bg-red-500 rounded"></div>
-                                <span className="text-xs text-gray-600">예약됨</span>
-                            </div>
-                        </div>
-                    </div>
-                );
-            };
-
-            // 리스트 뷰 렌더링
-            const renderListView = () => {
-                return (
-                    <div className="bg-white rounded-lg shadow p-4">
-                        <h3 className="text-base font-semibold mb-3">예약 목록</h3>
-                        {(() => {
-                            // 여기서 직접 필터링과 정렬 수행
-                            const filtered = Object.entries(reservations)
-                                .filter(([key, res]) => 
-                                    res.date === currentDate.toDateString() && res.mealTime === mealTime
-                                )
-                                .map(([key, res]) => res)
-                                .sort((a, b) => {
-                                    // 시간이 없으면 맨 뒤로
-                                    if (!a.time) return 1;
-                                    if (!b.time) return -1;
-                                    
-                                    // 시간을 숫자로 변환하여 비교
-                                    const aHour = parseInt(a.time.split(':')[0]);
-                                    const aMin = parseInt(a.time.split(':')[1]);
-                                    const bHour = parseInt(b.time.split(':')[0]);
-                                    const bMin = parseInt(b.time.split(':')[1]);
-                                    
-                                    const aTotal = aHour * 60 + aMin;
-                                    const bTotal = bHour * 60 + bMin;
-                                    
-                                    return aTotal - bTotal;
-                                });
-                            
-                            if (filtered.length === 0) {
-                                return <p className="text-gray-500 text-center py-8 text-sm">예약이 없습니다.</p>;
-                            }
-                            
-                            return (
-                                <div className="space-y-2">
-                                    {filtered.map((res, idx) => (
-                                    <div 
-                                        key={idx} 
-                                        className={`p-3 rounded-lg border text-sm ${res.noShow ? 'bg-gray-100 border-gray-300' : 'bg-blue-50 border-blue-200'}`}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-1">
-                                                    <span className="font-semibold">{res.table}</span>
-                                                    <span className="text-xs text-gray-600">{res.time}</span>
-                                                    {res.noShow && (
-                                                        <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded">노쇼</span>
-                                                    )}
-                                                </div>
-                                                <div className="space-y-0.5 text-xs">
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-gray-500">👤</span>
-                                                        <span>{res.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-gray-500">📞</span>
-                                                        <span>{res.phone}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-gray-500">👥</span>
-                                                        <span>{res.people}명</span>
-                                                    </div>
-                                                    {res.memo && (
-                                                        <div className="mt-1 p-1.5 bg-yellow-50 rounded text-gray-700">
-                                                            메모: {res.memo}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-1">
-                                                <button
-                                                    onClick={() => handleTableClick(res.table)}
-                                                    className="p-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                                >
-                                                    ✏️
-                                                </button>
-                                                <button
-                                                    onClick={() => handleNoShowToggle(res.table)}
-                                                    className="p-1.5 bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                                                >
-                                                    ⚠️
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteReservation(res.table)}
-                                                    className="p-1.5 bg-red-500 text-white rounded hover:bg-red-600"
-                                                >
-                                                    ❌
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    ))}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                );
-            };
-
-            // 총 테이블 수 계산
-            const getTotalTables = () => {
-                return 1 + // 1A
-                       3 + 4 + // 2층
-                       3 + 4 + // 3층
-                       2; // 4A, 4B
-            };
-
-            // 데이터 백업 (JSON 파일로 다운로드)
-            const backupData = () => {
-                const dataStr = JSON.stringify(reservations, null, 2);
-                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-                
-                const exportFileDefaultName = `소담서울_예약백업_${new Date().toISOString().split('T')[0]}.json`;
-                
-                const linkElement = document.createElement('a');
-                linkElement.setAttribute('href', dataUri);
-                linkElement.setAttribute('download', exportFileDefaultName);
-                linkElement.click();
-            };
-
-            // 오래된 예약 정리
-            const cleanOldReservations = async () => {
-                if (!window.confirm('3개월 이상 지난 예약을 모두 삭제하시겠습니까?')) return;
-                
-                const threeMonthsAgo = new Date();
-                threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                const key = getReservationKey(currentDate, reservation.table, mealTime);
                 
                 try {
-                    setSyncStatus('정리 중...');
-                    const updates = {};
-                    
-                    Object.entries(reservations).forEach(([key, res]) => {
-                        const resDate = new Date(res.date);
-                        if (resDate <= threeMonthsAgo) {
-                            updates[`reservations/${key}`] = null;
-                        }
-                    });
-                    
-                    if (Object.keys(updates).length > 0) {
-                        await database.ref().update(updates);
-                        alert(`${Object.keys(updates).length}개의 오래된 예약이 정리되었습니다.`);
-                    } else {
-                        alert('정리할 예약이 없습니다.');
-                    }
-                    setSyncStatus('동기화됨');
+                    await database.ref(`reservations/${key}`).remove();
+                    alert('예약이 삭제되었습니다.');
                 } catch (error) {
-                    console.error('예약 정리 실패:', error);
-                    alert('예약 정리에 실패했습니다.');
-                    setSyncStatus('동기화 오류');
+                    console.error('예약 삭제 실패:', error);
+                    alert('예약 삭제에 실패했습니다.');
                 }
             };
-
+            
+            // 노쇼 토글
+            const handleNoShow = async (reservation) => {
+                const key = getReservationKey(currentDate, reservation.table, mealTime);
+                
+                try {
+                    await database.ref(`reservations/${key}/noShow`).set(!reservation.noShow);
+                } catch (error) {
+                    console.error('노쇼 상태 변경 실패:', error);
+                }
+            };
+            
+            // 예약 편집
+            const handleEdit = (reservation) => {
+                setSelectedReservation(reservation);
+                setFormData({
+                    table: reservation.table,
+                    name: reservation.name,
+                    phone: reservation.phone,
+                    people: reservation.people,
+                    time: reservation.time,
+                    memo: reservation.memo || ''
+                });
+                setShowForm(true);
+            };
+            
+            // 새 예약 추가
+            const handleNewReservation = (table = '') => {
+                setSelectedReservation(null);
+                setFormData({
+                    table: table,
+                    name: '',
+                    phone: '',
+                    people: '',
+                    time: '',
+                    memo: ''
+                });
+                setShowForm(true);
+            };
+            
+            // 날짜 포맷
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                const weekDay = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+                return `${month}월 ${day}일 (${weekDay})`;
+            };
+            
+            // 테이블이 예약되어 있는지 확인
+            const isTableReserved = (table) => {
+                return currentReservations.some(res => res.table === table);
+            };
+            
             return (
-                <div className="min-h-screen bg-gray-100">
-                    <div className="max-w-md mx-auto bg-white min-h-screen shadow-xl">
+                <div className="min-h-screen bg-gray-50">
+                    <div className="max-w-md mx-auto bg-white min-h-screen shadow-lg">
                         {/* 헤더 */}
-                        <div className="bg-white shadow-md p-4">
-                            <div className="flex justify-between items-center">
-                                <h1 className="text-xl font-bold text-gray-800">소담서울 예약 관리</h1>
-                                <div className="flex gap-2 items-center">
-                                    <span className={`text-xs px-2 py-1 rounded ${
-                                        isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                    }`}>
-                                        {syncStatus}
-                                    </span>
-                                    <button
-                                        onClick={backupData}
-                                        className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600"
-                                    >
-                                        백업
-                                    </button>
-                                    <button
-                                        onClick={cleanOldReservations}
-                                        className="px-3 py-1 bg-yellow-500 text-white text-sm rounded hover:bg-yellow-600"
-                                    >
-                                        정리
-                                    </button>
-                                </div>
+                        <div className="bg-blue-600 text-white p-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h1 className="text-xl font-bold">소담서울 예약 관리</h1>
+                                <span className={`text-xs px-2 py-1 rounded ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}>
+                                    {isOnline ? '온라인' : '오프라인'}
+                                </span>
                             </div>
-                        </div>
-
-                        {/* 주간 캘린더 */}
-                        <div className="bg-gray-50 p-3 mb-3">
-                            <div className="flex items-center justify-between mb-3">
+                            
+                            {/* 날짜 선택 */}
+                            <div className="flex items-center justify-between">
                                 <button 
-                                    onClick={() => changeWeek(-1)}
-                                    className="p-1.5 bg-white rounded shadow hover:shadow-md"
+                                    onClick={() => {
+                                        const newDate = new Date(currentDate);
+                                        newDate.setDate(newDate.getDate() - 1);
+                                        setCurrentDate(newDate);
+                                    }}
+                                    className="p-2 hover:bg-blue-700 rounded"
                                 >
                                     ◀
                                 </button>
-                                <h2 className="text-sm font-semibold">
-                                    {getWeekDates(currentWeek)[0].getMonth()+1}/{getWeekDates(currentWeek)[0].getDate()} ~ {getWeekDates(currentWeek)[6].getMonth()+1}/{getWeekDates(currentWeek)[6].getDate()}
-                                </h2>
+                                <h2 className="text-lg font-medium">{formatDate(currentDate)}</h2>
                                 <button 
-                                    onClick={() => changeWeek(1)}
-                                    className="p-1.5 bg-white rounded shadow hover:shadow-md"
+                                    onClick={() => {
+                                        const newDate = new Date(currentDate);
+                                        newDate.setDate(newDate.getDate() + 1);
+                                        setCurrentDate(newDate);
+                                    }}
+                                    className="p-2 hover:bg-blue-700 rounded"
                                 >
                                     ▶
                                 </button>
                             </div>
+                        </div>
+                        
+                        {/* 점심/저녁 선택 */}
+                        <div className="p-3 bg-gray-100">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setMealTime('lunch')}
+                                    className={`flex-1 py-2 rounded font-medium transition ${
+                                        mealTime === 'lunch' 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-white text-gray-700'
+                                    }`}
+                                >
+                                    점심
+                                </button>
+                                <button
+                                    onClick={() => setMealTime('dinner')}
+                                    className={`flex-1 py-2 rounded font-medium transition ${
+                                        mealTime === 'dinner' 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-white text-gray-700'
+                                    }`}
+                                >
+                                    저녁
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* 뷰 모드 선택 & 새 예약 버튼 */}
+                        <div className="p-3 flex justify-between items-center">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setViewMode('list')}
+                                    className={`px-3 py-1 rounded text-sm ${
+                                        viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-gray-200'
+                                    }`}
+                                >
+                                    리스트
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('grid')}
+                                    className={`px-3 py-1 rounded text-sm ${
+                                        viewMode === 'grid' ? 'bg-gray-800 text-white' : 'bg-gray-200'
+                                    }`}
+                                >
+                                    테이블
+                                </button>
+                            </div>
                             
-                            <div className="grid grid-cols-7 gap-1">
-                                {getWeekDates(currentWeek).map((date) => (
-                                    <button
-                                        key={date.toDateString()}
-                                        onClick={() => setCurrentDate(date)}
-                                        className={`p-2 rounded-lg text-center transition-all ${
-                                            date.toDateString() === currentDate.toDateString()
-                                                ? 'bg-blue-500 text-white'
-                                                : isToday(date)
-                                                ? 'bg-yellow-100 hover:bg-yellow-200'
-                                                : 'bg-white hover:bg-gray-100'
-                                        }`}
-                                    >
-                                        <div className="text-xs">{getDayName(date)}</div>
-                                        <div className="text-sm font-bold">{date.getDate()}</div>
-                                    </button>
-                                ))}
-                            </div>
+                            <button
+                                onClick={() => handleNewReservation()}
+                                className="bg-blue-600 text-white px-4 py-1 rounded text-sm hover:bg-blue-700"
+                            >
+                                + 새 예약
+                            </button>
                         </div>
-
-                        {/* 점심/저녁 선택 및 뷰 모드 */}
-                        <div className="p-3 mb-3">
-                            <div className="flex justify-between items-center">
-                                <div className="flex gap-1 flex-1">
-                                    <button
-                                        onClick={() => setMealTime('lunch')}
-                                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all
-                                            ${mealTime === 'lunch' 
-                                                ? 'bg-blue-500 text-white' 
-                                                : 'bg-gray-100 text-gray-700'}`}
-                                    >
-                                        점심
-                                    </button>
-                                    <button
-                                        onClick={() => setMealTime('dinner')}
-                                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all
-                                            ${mealTime === 'dinner' 
-                                                ? 'bg-blue-500 text-white' 
-                                                : 'bg-gray-100 text-gray-700'}`}
-                                    >
-                                        저녁
-                                    </button>
-                                </div>
-                                <div className="flex gap-1 ml-2">
-                                    <button
-                                        onClick={() => setViewMode('grid')}
-                                        className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
-                                    >
-                                        ⬜
-                                    </button>
-                                    <button
-                                        onClick={() => setViewMode('list')}
-                                        className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
-                                    >
-                                        ☰
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 테이블 현황 또는 리스트 뷰 */}
+                        
+                        {/* 예약 요약 */}
                         <div className="px-3 pb-3">
-                            {viewMode === 'grid' ? renderGridView() : renderListView()}
-                        </div>
-
-                        {/* 예약 정보 요약 */}
-                        <div className="bg-gray-50 p-3 mx-3 mb-3 rounded-lg">
-                            <h3 className="text-sm font-semibold mb-2">예약 현황</h3>
-                            <div className="flex justify-between text-xs">
-                                <div>
-                                    <span className="text-gray-600">총 테이블: </span>
-                                    <span className="font-semibold">{getTotalTables()}개</span>
-                                </div>
-                                <div>
-                                    <span className="text-gray-600">예약됨: </span>
-                                    <span className="font-semibold text-red-500">
-                                        {Object.keys(reservations).filter(key => 
-                                            key.includes(currentDate.toDateString()) && key.includes(mealTime)
-                                        ).length}개
-                                    </span>
+                            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+                                <div className="flex justify-between">
+                                    <span>총 예약: <strong>{currentReservations.length}개</strong></span>
+                                    <span>예약 가능: <strong>{17 - currentReservations.length}개</strong></span>
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* 예약 폼 모달 */}
-                    {showReservationForm && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
-                            <div className="bg-white rounded-t-2xl p-6 w-full max-w-md animate-slide-up">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-semibold">
-                                        {editingReservation ? '예약 수정' : '새 예약'} - {selectedTable}
-                                    </h3>
-                                    <button 
-                                        onClick={() => setShowReservationForm(false)}
-                                        className="text-gray-500 hover:text-gray-700 text-2xl"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            예약자명 *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholder="홍길동"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            연락처 *
-                                        </label>
-                                        <input
-                                            type="tel"
-                                            value={formData.phone}
-                                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholder="010-1234-5678"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            인원수 * (최대 {getTableCapacity(selectedTable)}명)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={formData.people}
-                                            onChange={(e) => setFormData({...formData, people: e.target.value})}
-                                            min="1"
-                                            max={getTableCapacity(selectedTable)}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholder="4"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            예약 시간 *
-                                        </label>
-                                        <select
-                                            value={formData.time}
-                                            onChange={(e) => setFormData({...formData, time: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        >
-                                            <option value="">시간 선택</option>
-                                            {timeSlots.map(time => (
-                                                <option key={time} value={time}>{time}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            메모
-                                        </label>
-                                        <textarea
-                                            value={formData.memo}
-                                            onChange={(e) => setFormData({...formData, memo: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            rows="2"
-                                            placeholder="특별 요청사항이나 메모"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-2 pt-3">
-                                        {editingReservation && (
-                                            <button
-                                                onClick={() => handleDeleteReservation(selectedTable)}
-                                                className="flex-1 bg-red-500 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                        
+                        {/* 컨텐츠 영역 */}
+                        <div className="px-3 pb-3">
+                            {viewMode === 'list' ? (
+                                /* 리스트 뷰 */
+                                <div className="space-y-2">
+                                    {currentReservations.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-500">
+                                            예약이 없습니다
+                                        </div>
+                                    ) : (
+                                        currentReservations.map((reservation) => (
+                                            <div 
+                                                key={reservation.key}
+                                                className={`bg-white border rounded-lg p-3 ${
+                                                    reservation.noShow ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                                                }`}
                                             >
-                                                예약 삭제
-                                            </button>
-                                        )}
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-3 mb-1">
+                                                            <span className="font-bold text-lg">{reservation.time}</span>
+                                                            <span className="bg-gray-100 px-2 py-1 rounded text-sm">
+                                                                {reservation.table}
+                                                            </span>
+                                                            {reservation.noShow && (
+                                                                <span className="bg-red-500 text-white px-2 py-1 rounded text-xs">
+                                                                    노쇼
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-sm text-gray-600">
+                                                            <div>{reservation.name} · {reservation.phone}</div>
+                                                            <div>{reservation.people}명</div>
+                                                            {reservation.memo && (
+                                                                <div className="mt-1 text-xs bg-yellow-100 p-1 rounded">
+                                                                    📝 {reservation.memo}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            onClick={() => handleEdit(reservation)}
+                                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                                        >
+                                                            ✏️
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleNoShow(reservation)}
+                                                            className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded"
+                                                        >
+                                                            ⚠️
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(reservation)}
+                                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                                                        >
+                                                            🗑️
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            ) : (
+                                /* 그리드 뷰 */
+                                <div className="space-y-4">
+                                    {/* Room */}
+                                    <div>
+                                        <h3 className="font-semibold text-sm mb-2">Room (10인)</h3>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {tables.room.map(table => (
+                                                <button
+                                                    key={table}
+                                                    onClick={() => handleNewReservation(table)}
+                                                    className={`p-3 rounded-lg text-center transition ${
+                                                        isTableReserved(table)
+                                                            ? 'bg-red-500 text-white'
+                                                            : 'bg-green-100 hover:bg-green-200'
+                                                    }`}
+                                                >
+                                                    <div className="font-semibold">{table}</div>
+                                                    {currentReservations.find(r => r.table === table) && (
+                                                        <div className="text-xs mt-1">
+                                                            {currentReservations.find(r => r.table === table).time}
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 2층 */}
+                                    <div>
+                                        <h3 className="font-semibold text-sm mb-2">2층</h3>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <div className="text-xs text-gray-600 mb-1">2A (4인석)</div>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {tables.floor2.A.map(table => (
+                                                        <button
+                                                            key={table}
+                                                            onClick={() => handleNewReservation(table)}
+                                                            className={`p-2 rounded text-xs transition ${
+                                                                isTableReserved(table)
+                                                                    ? 'bg-red-500 text-white'
+                                                                    : 'bg-green-100 hover:bg-green-200'
+                                                            }`}
+                                                        >
+                                                            {table}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-gray-600 mb-1">2B (6인석)</div>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {tables.floor2.B.map(table => (
+                                                        <button
+                                                            key={table}
+                                                            onClick={() => handleNewReservation(table)}
+                                                            className={`p-2 rounded text-xs transition ${
+                                                                isTableReserved(table)
+                                                                    ? 'bg-red-500 text-white'
+                                                                    : 'bg-green-100 hover:bg-green-200'
+                                                            }`}
+                                                        >
+                                                            {table}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 3층 */}
+                                    <div>
+                                        <h3 className="font-semibold text-sm mb-2">3층</h3>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <div className="text-xs text-gray-600 mb-1">3A (4인석)</div>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {tables.floor3.A.map(table => (
+                                                        <button
+                                                            key={table}
+                                                            onClick={() => handleNewReservation(table)}
+                                                            className={`p-2 rounded text-xs transition ${
+                                                                isTableReserved(table)
+                                                                    ? 'bg-red-500 text-white'
+                                                                    : 'bg-green-100 hover:bg-green-200'
+                                                            }`}
+                                                        >
+                                                            {table}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-gray-600 mb-1">3B (6인석)</div>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {tables.floor3.B.map(table => (
+                                                        <button
+                                                            key={table}
+                                                            onClick={() => handleNewReservation(table)}
+                                                            className={`p-2 rounded text-xs transition ${
+                                                                isTableReserved(table)
+                                                                    ? 'bg-red-500 text-white'
+                                                                    : 'bg-green-100 hover:bg-green-200'
+                                                            }`}
+                                                        >
+                                                            {table}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* 예약 폼 모달 */}
+                        {showForm && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+                                <div className="bg-white w-full rounded-t-2xl p-4 slide-up">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-lg font-semibold">
+                                            {selectedReservation ? '예약 수정' : '새 예약'}
+                                        </h3>
                                         <button
-                                            onClick={handleReservationSubmit}
-                                            className="flex-1 bg-blue-500 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
+                                            onClick={() => setShowForm(false)}
+                                            className="text-gray-500 text-2xl"
                                         >
-                                            {editingReservation ? '수정 완료' : '예약 등록'}
+                                            ×
                                         </button>
                                     </div>
+                                    
+                                    <form onSubmit={handleSubmit} className="space-y-3">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">테이블 *</label>
+                                            <select
+                                                value={formData.table}
+                                                onChange={(e) => setFormData({...formData, table: e.target.value})}
+                                                className="w-full border rounded px-3 py-2"
+                                                required
+                                            >
+                                                <option value="">선택하세요</option>
+                                                <optgroup label="Room (10인)">
+                                                    {tables.room.map(t => (
+                                                        <option key={t} value={t} disabled={isTableReserved(t) && t !== selectedReservation?.table}>
+                                                            {t} {isTableReserved(t) && t !== selectedReservation?.table && '(예약됨)'}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                                <optgroup label="2층 (4인)">
+                                                    {tables.floor2.A.map(t => (
+                                                        <option key={t} value={t} disabled={isTableReserved(t) && t !== selectedReservation?.table}>
+                                                            {t} {isTableReserved(t) && t !== selectedReservation?.table && '(예약됨)'}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                                <optgroup label="2층 (6인)">
+                                                    {tables.floor2.B.map(t => (
+                                                        <option key={t} value={t} disabled={isTableReserved(t) && t !== selectedReservation?.table}>
+                                                            {t} {isTableReserved(t) && t !== selectedReservation?.table && '(예약됨)'}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                                <optgroup label="3층 (4인)">
+                                                    {tables.floor3.A.map(t => (
+                                                        <option key={t} value={t} disabled={isTableReserved(t) && t !== selectedReservation?.table}>
+                                                            {t} {isTableReserved(t) && t !== selectedReservation?.table && '(예약됨)'}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                                <optgroup label="3층 (6인)">
+                                                    {tables.floor3.B.map(t => (
+                                                        <option key={t} value={t} disabled={isTableReserved(t) && t !== selectedReservation?.table}>
+                                                            {t} {isTableReserved(t) && t !== selectedReservation?.table && '(예약됨)'}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            </select>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">예약자명 *</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.name}
+                                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                                    className="w-full border rounded px-3 py-2"
+                                                    required
+                                                />
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">연락처 *</label>
+                                                <input
+                                                    type="tel"
+                                                    value={formData.phone}
+                                                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                                                    className="w-full border rounded px-3 py-2"
+                                                    placeholder="010-0000-0000"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">
+                                                    인원 * {formData.table && `(최대 ${getTableCapacity(formData.table)}명)`}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={formData.people}
+                                                    onChange={(e) => setFormData({...formData, people: e.target.value})}
+                                                    className="w-full border rounded px-3 py-2"
+                                                    min="1"
+                                                    max={formData.table ? getTableCapacity(formData.table) : 10}
+                                                    required
+                                                />
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">시간 *</label>
+                                                <select
+                                                    value={formData.time}
+                                                    onChange={(e) => setFormData({...formData, time: e.target.value})}
+                                                    className="w-full border rounded px-3 py-2"
+                                                    required
+                                                >
+                                                    <option value="">선택하세요</option>
+                                                    {getTimeSlots().map(time => (
+                                                        <option key={time} value={time}>{time}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">메모</label>
+                                            <textarea
+                                                value={formData.memo}
+                                                onChange={(e) => setFormData({...formData, memo: e.target.value})}
+                                                className="w-full border rounded px-3 py-2"
+                                                rows="2"
+                                                placeholder="특별 요청사항"
+                                            />
+                                        </div>
+                                        
+                                        <div className="flex gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowForm(false)}
+                                                className="flex-1 py-2 border border-gray-300 rounded text-gray-700"
+                                            >
+                                                취소
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                            >
+                                                {selectedReservation ? '수정' : '등록'}
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             );
-        };
-
-        // React 렌더링
+        }
+        
+        // 앱 렌더링
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<SodamSeoulApp />);
+        root.render(<App />);
     </script>
 </body>
 </html>
