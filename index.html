@@ -486,17 +486,16 @@
             };
 
             // 리스트 뷰 렌더링
-            const renderListView = () => {
-                const currentReservations = Object.entries(reservations)
-                    .filter(([key, res]) => 
-                        res.date === currentDate.toDateString() && res.mealTime === mealTime
-                    )
-                    .map(([key, res]) => res)
-.sort((a, b) => {
-  const timeA = parseInt(a.time.replace(':', ''));
-  const timeB = parseInt(b.time.replace(':', ''));
-  return timeA - timeB;
-});
+            const currentReservations = Object.entries(reservations)
+                .filter(([key, res]) => 
+                    res.date === currentDate.toDateString() && res.mealTime === mealTime
+                )
+                .map(([key, res]) => res)
+                .sort((a, b) => {
+                    const timeA = parseInt(a.time.replace(':', ''));
+                    const timeB = parseInt(b.time.replace(':', ''));
+                    return timeA - timeB;
+                });
                 return (
                     <div className="bg-white rounded-lg shadow p-4">
                         <h3 className="text-base font-semibold mb-3">예약 목록</h3>
