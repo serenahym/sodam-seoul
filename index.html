@@ -117,8 +117,11 @@
                 const isSaturday = currentDate.getDay() === 6;
                 
                 if (isSaturday) {
-                    // 토요일은 점심/저녁 구분 없이 12:00 ~ 21:50
-                    return generateTimeSlots('12:00', '21:50', 10);
+                    if (mealTime === 'lunch') {
+                        return generateTimeSlots('12:00', '16:50', 10);
+                    } else {
+                        return generateTimeSlots('17:00', '21:50', 10);
+                    }
                 } else {
                     if (mealTime === 'lunch') {
                         return generateTimeSlots('11:30', '14:30', 10);
@@ -187,19 +190,11 @@
             
             // 현재 날짜의 예약 목록 (시간순 정렬)
             const currentReservations = useMemo(() => {
-                const isSaturday = currentDate.getDay() === 6;
-                
                 const filtered = Object.entries(reservations)
-                    .filter(([key, res]) => {
-                        if (isSaturday) {
-                            // 토요일은 점심/저녁 구분 없이 모든 예약 표시
-                            return res.date === currentDate.toDateString();
-                        } else {
-                            // 평일은 선택된 시간대만
-                            return res.date === currentDate.toDateString() && 
-                                   res.mealTime === mealTime;
-                        }
-                    })
+                    .filter(([key, res]) => 
+                        res.date === currentDate.toDateString() && 
+                        res.mealTime === mealTime
+                    )
                     .map(([key, res]) => ({ ...res, key }));
                 
                 // 시간순 정렬
@@ -419,33 +414,31 @@
                             </div>
                         </div>
                         
-                        {/* 점심/저녁 선택 - 토요일에는 숨김 */}
-                        {currentDate.getDay() !== 6 && (
-                            <div className="p-3">
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setMealTime('lunch')}
-                                        className={`flex-1 py-2 rounded font-medium transition ${
-                                            mealTime === 'lunch' 
-                                                ? 'bg-blue-600 text-white' 
-                                                : 'bg-gray-200 text-gray-700'
-                                        }`}
-                                    >
-                                        점심
-                                    </button>
-                                    <button
-                                        onClick={() => setMealTime('dinner')}
-                                        className={`flex-1 py-2 rounded font-medium transition ${
-                                            mealTime === 'dinner' 
-                                                ? 'bg-blue-600 text-white' 
-                                                : 'bg-gray-200 text-gray-700'
-                                        }`}
-                                    >
-                                        저녁
-                                    </button>
-                                </div>
+                        {/* 점심/저녁 선택 */}
+                        <div className="p-3">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setMealTime('lunch')}
+                                    className={`flex-1 py-2 rounded font-medium transition ${
+                                        mealTime === 'lunch' 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    점심
+                                </button>
+                                <button
+                                    onClick={() => setMealTime('dinner')}
+                                    className={`flex-1 py-2 rounded font-medium transition ${
+                                        mealTime === 'dinner' 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    저녁
+                                </button>
                             </div>
-                        )}
+                        </div>
                         
                         {/* 뷰 모드 선택 & 새 예약 버튼 */}
                         <div className="p-3 flex justify-between items-center">
