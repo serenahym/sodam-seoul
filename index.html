@@ -493,15 +493,12 @@
                     )
                     .map(([key, res]) => res)
                     .sort((a, b) => {
-                        // 시간을 시와 분으로 분리하여 비교
-                        const [hourA, minuteA] = a.time.split(':').map(Number);
-                        const [hourB, minuteB] = b.time.split(':').map(Number);
+                        // time이 없으면 맨 뒤로
+                        if (!a.time) return 1;
+                        if (!b.time) return -1;
                         
-                        // 시간 비교 후 같으면 분 비교
-                        if (hourA !== hourB) {
-                            return hourA - hourB;
-                        }
-                        return minuteA - minuteB;
+                        // 시간 문자열 직접 비교 (11:30 < 12:00 < 12:30...)
+                        return a.time.localeCompare(b.time);
                     });
                 
                 return (
