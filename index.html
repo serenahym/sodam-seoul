@@ -79,6 +79,7 @@
             const [selectedReservation, setSelectedReservation] = useState(null);
             const [showForm, setShowForm] = useState(false);
             const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [currentWeek, setCurrentWeek] = useState(new Date());
             
             // 폼 데이터
             const [formData, setFormData] = useState({
@@ -311,6 +312,49 @@
                 return `${month}월 ${day}일 (${weekDay})`;
             };
             
+            // 주간 날짜 가져오기
+            const getWeekDates = (date) => {
+                const week = [];
+                const startOfWeek = new Date(date);
+                const day = startOfWeek.getDay();
+                const diff = startOfWeek.getDate() - day;
+                startOfWeek.setDate(diff);
+                
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(startOfWeek);
+                    day.setDate(startOfWeek.getDate() + i);
+                    week.push(day);
+                }
+                return week;
+            };
+            
+            // 주 변경
+            const changeWeek = (weeks) => {
+                const newWeek = new Date(currentWeek);
+                newWeek.setDate(newWeek.getDate() + (weeks * 7));
+                setCurrentWeek(newWeek);
+                
+                const weekDates = getWeekDates(newWeek);
+                const isCurrentDateInNewWeek = weekDates.some(date => 
+                    date.toDateString() === currentDate.toDateString()
+                );
+                if (!isCurrentDateInNewWeek) {
+                    setCurrentDate(weekDates[0]);
+                }
+            };
+            
+            // 오늘인지 확인
+            const isToday = (date) => {
+                const today = new Date();
+                return date.toDateString() === today.toDateString();
+            };
+            
+            // 요일 이름 가져오기
+            const getDayName = (date) => {
+                const days = ['일', '월', '화', '수', '목', '금', '토'];
+                return days[date.getDay()];
+            };
+            
             // 테이블이 예약되어 있는지 확인
             const isTableReserved = (table) => {
                 return currentReservations.some(res => res.table === table);
@@ -321,48 +365,64 @@
                     <div className="max-w-md mx-auto bg-white min-h-screen shadow-lg">
                         {/* 헤더 */}
                         <div className="bg-blue-600 text-white p-4">
-                            <div className="flex justify-between items-center mb-3">
+                            <div className="flex justify-between items-center">
                                 <h1 className="text-xl font-bold">소담서울 예약 관리</h1>
                                 <span className={`text-xs px-2 py-1 rounded ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}>
                                     {isOnline ? '온라인' : '오프라인'}
                                 </span>
                             </div>
-                            
-                            {/* 날짜 선택 */}
-                            <div className="flex items-center justify-between">
+                        </div>
+                        
+                        {/* 주간 캘린더 */}
+                        <div className="bg-gray-100 p-3">
+                            <div className="flex items-center justify-between mb-3">
                                 <button 
-                                    onClick={() => {
-                                        const newDate = new Date(currentDate);
-                                        newDate.setDate(newDate.getDate() - 1);
-                                        setCurrentDate(newDate);
-                                    }}
-                                    className="p-2 hover:bg-blue-700 rounded"
+                                    onClick={() => changeWeek(-1)}
+                                    className="p-1.5 bg-white rounded shadow hover:shadow-md"
                                 >
                                     ◀
                                 </button>
-                                <h2 className="text-lg font-medium">{formatDate(currentDate)}</h2>
+                                <h2 className="text-sm font-semibold">
+                                    {getWeekDates(currentWeek)[0].getMonth()+1}/{getWeekDates(currentWeek)[0].getDate()} ~ 
+                                    {getWeekDates(currentWeek)[6].getMonth()+1}/{getWeekDates(currentWeek)[6].getDate()}
+                                </h2>
                                 <button 
-                                    onClick={() => {
-                                        const newDate = new Date(currentDate);
-                                        newDate.setDate(newDate.getDate() + 1);
-                                        setCurrentDate(newDate);
-                                    }}
-                                    className="p-2 hover:bg-blue-700 rounded"
+                                    onClick={() => changeWeek(1)}
+                                    className="p-1.5 bg-white rounded shadow hover:shadow-md"
                                 >
                                     ▶
                                 </button>
                             </div>
+                            
+                            <div className="grid grid-cols-7 gap-1">
+                                {getWeekDates(currentWeek).map((date) => (
+                                    <button
+                                        key={date.toDateString()}
+                                        onClick={() => setCurrentDate(date)}
+                                        className={`p-2 rounded-lg text-center transition-all ${
+                                            date.toDateString() === currentDate.toDateString()
+                                                ? 'bg-blue-600 text-white'
+                                                : isToday(date)
+                                                ? 'bg-yellow-100 hover:bg-yellow-200'
+                                                : 'bg-white hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <div className="text-xs">{getDayName(date)}</div>
+                                        <div className="text-sm font-bold">{date.getDate()}</div>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         
                         {/* 점심/저녁 선택 */}
-                        <div className="p-3 bg-gray-100">
+                        <div className="p-3">
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setMealTime('lunch')}
                                     className={`flex-1 py-2 rounded font-medium transition ${
                                         mealTime === 'lunch' 
                                             ? 'bg-blue-600 text-white' 
-                                            : 'bg-white text-gray-700'
+                                            : 'bg-gray-200 text-gray-700'
                                     }`}
                                 >
                                     점심
@@ -372,7 +432,7 @@
                                     className={`flex-1 py-2 rounded font-medium transition ${
                                         mealTime === 'dinner' 
                                             ? 'bg-blue-600 text-white' 
-                                            : 'bg-white text-gray-700'
+                                            : 'bg-gray-200 text-gray-700'
                                     }`}
                                 >
                                     저녁
